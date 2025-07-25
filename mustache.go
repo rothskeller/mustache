@@ -601,13 +601,15 @@ func (tmpl *Template) renderSection(section *sectionElement, contextChain []inte
 				return err
 			}
 			render := func(text string) (string, error) {
-				tmpl2, err := ParseString(text)
+				var innerTmpl = *tmpl
+				innerTmpl.data = text
+				innerTmpl.p, innerTmpl.curline, innerTmpl.elems = 0, 1, []interface{}{}
+				err := innerTmpl.parse()
 				if err != nil {
 					return "", err
 				}
-				tmpl2.otag, tmpl2.ctag = tmpl.otag, tmpl.ctag
 				var buf bytes.Buffer
-				if err := tmpl2.renderTemplate(contextChain, &buf); err != nil {
+				if err := innerTmpl.renderTemplate(contextChain, &buf); err != nil {
 					return "", err
 				}
 				return buf.String(), nil
