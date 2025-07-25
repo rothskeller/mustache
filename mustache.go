@@ -597,16 +597,17 @@ func (tmpl *Template) renderSection(section *sectionElement, contextChain []inte
 				return fmt.Errorf("lambda %q doesn't match required LambaFunc signature", section.name)
 			}
 			var text bytes.Buffer
-			if err := getSectionText(section.elems, &text); err != nil {
+			if err := tmpl.getSectionText(section.elems, &text); err != nil {
 				return err
 			}
 			render := func(text string) (string, error) {
-				tmpl, err := ParseString(text)
+				tmpl2, err := ParseString(text)
 				if err != nil {
 					return "", err
 				}
+				tmpl2.otag, tmpl2.ctag = tmpl.otag, tmpl.ctag
 				var buf bytes.Buffer
-				if err := tmpl.renderTemplate(contextChain, &buf); err != nil {
+				if err := tmpl2.renderTemplate(contextChain, &buf); err != nil {
 					return "", err
 				}
 				return buf.String(), nil
@@ -642,37 +643,37 @@ func (tmpl *Template) renderSection(section *sectionElement, contextChain []inte
 	return nil
 }
 
-func getSectionText(elements []interface{}, buf io.Writer) error {
+func (tmpl *Template) getSectionText(elements []interface{}, buf io.Writer) error {
 	for _, element := range elements {
-		if err := getElementText(element, buf); err != nil {
+		if err := tmpl.getElementText(element, buf); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func getElementText(element interface{}, buf io.Writer) error {
+func (tmpl *Template) getElementText(element interface{}, buf io.Writer) error {
 	switch elem := element.(type) {
 	case *textElement:
 		fmt.Fprintf(buf, "%s", elem.text)
 	case *varElement:
 		if elem.raw {
-			fmt.Fprintf(buf, "{{{%s}}}", elem.name)
+			fmt.Fprintf(buf, "%s&%s%s", tmpl.otag, elem.name, tmpl.ctag)
 		} else {
-			fmt.Fprintf(buf, "{{%s}}", elem.name)
+			fmt.Fprintf(buf, "%s%s%s", tmpl.otag, elem.name, tmpl.ctag)
 		}
 	case *sectionElement:
 		if elem.inverted {
-			fmt.Fprintf(buf, "{{^%s}}", elem.name)
+			fmt.Fprintf(buf, "%s^%s%s", tmpl.otag, elem.name, tmpl.ctag)
 		} else {
-			fmt.Fprintf(buf, "{{#%s}}", elem.name)
+			fmt.Fprintf(buf, "%s#%s%s", tmpl.otag, elem.name, tmpl.ctag)
 		}
 		for _, nelem := range elem.elems {
-			if err := getElementText(nelem, buf); err != nil {
+			if err := tmpl.getElementText(nelem, buf); err != nil {
 				return err
 			}
 		}
-		fmt.Fprintf(buf, "{{/%s}}", elem.name)
+		fmt.Fprintf(buf, "%s/%s%s", tmpl.otag, elem.name, tmpl.ctag)
 	default:
 		return fmt.Errorf("unexpected element type %T", elem)
 	}
