@@ -682,29 +682,45 @@ func (tmpl *Template) getElementText(element interface{}, buf io.Writer) error {
 	return nil
 }
 
+func (tmpl *Template) renderVariable(elem *varElement, contextChain []interface{}, buf io.Writer) error {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("Panic while looking up %q: %s\n", elem.name, r)
+		}
+	}()
+	val, err := lookup(contextChain, elem.name, AllowMissingVariables)
+	if err != nil {
+		return err
+	}
+
+	if val.IsValid() {
+		var vi = val.Interface()
+
+		if lambda, ok := vi.(func() (string, error)); ok {
+			if result, err := lambda(); err != nil {
+				return err
+			} else {
+				vi = result
+			}
+		}
+		if elem.raw {
+			fmt.Fprint(buf, vi)
+		} else {
+			s := fmt.Sprint(vi)
+			_, _ = buf.Write([]byte(tmpl.escape(s)))
+		}
+	}
+	return nil
+}
+
 func (tmpl *Template) renderElement(element interface{}, contextChain []interface{}, buf io.Writer) error {
 	switch elem := element.(type) {
 	case *textElement:
 		_, err := buf.Write(elem.text)
 		return err
 	case *varElement:
-		defer func() {
-			if r := recover(); r != nil {
-				fmt.Printf("Panic while looking up %q: %s\n", elem.name, r)
-			}
-		}()
-		val, err := lookup(contextChain, elem.name, AllowMissingVariables)
-		if err != nil {
+		if err := tmpl.renderVariable(elem, contextChain, buf); err != nil {
 			return err
-		}
-
-		if val.IsValid() {
-			if elem.raw {
-				fmt.Fprint(buf, val.Interface())
-			} else {
-				s := fmt.Sprint(val.Interface())
-				_, _ = buf.Write([]byte(tmpl.escape(s)))
-			}
 		}
 	case *sectionElement:
 		if err := tmpl.renderSection(elem, contextChain, buf); err != nil {
